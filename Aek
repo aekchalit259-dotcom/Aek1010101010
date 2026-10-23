@@ -1,0 +1,452 @@
+-- ==========================================
+-- สคริปต์: เอกชอบสร้างสคริป
+-- ==========================================
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local HttpService = game:GetService("HttpService")
+
+local LocalPlayer = Players.LocalPlayer
+local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+local Humanoid = Character:WaitForChild("Humanoid")
+local RootPart = Character:WaitForChild("HumanoidRootPart")
+
+LocalPlayer.CharacterAdded:Connect(function(char)
+    Character = char
+    Humanoid = char:WaitForChild("Humanoid")
+    RootPart = char:WaitForChild("HumanoidRootPart")
+end)
+
+-- Variables สำหรับฟังก์ชันหลัก
+local speedValue = 16
+local isNoclip = false
+local isFly = false
+local flySpeed = 50
+
+-- Noclip System
+RunService.Stepped:Connect(function()
+    if isNoclip and Character then
+        for _, part in ipairs(Character:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = false
+            end
+        end
+    end
+end)
+
+-- Fly System
+local bodyGyro, bodyVelocity
+local function startFlying()
+    bodyGyro = Instance.new("BodyGyro")
+    bodyGyro.P = 9e4
+    bodyGyro.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
+    bodyGyro.CFrame = RootPart.CFrame
+    bodyGyro.Parent = RootPart
+
+    bodyVelocity = Instance.new("BodyVelocity")
+    bodyVelocity.Velocity = Vector3.zero
+    bodyVelocity.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+    bodyVelocity.Parent = RootPart
+
+    task.spawn(function()
+        while isFly and Character and Humanoid.Health > 0 do
+            local camera = workspace.CurrentCamera
+            local moveDir = Vector3.zero
+            
+            if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveDir = moveDir + camera.CFrame.LookVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveDir = moveDir - camera.CFrame.LookVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveDir = moveDir - camera.CFrame.RightVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveDir = moveDir + camera.CFrame.RightVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.Space) then moveDir = moveDir + Vector3.new(0, 1, 0) end
+            if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then moveDir = moveDir - Vector3.new(0, 1, 0) end
+
+            bodyGyro.CFrame = camera.CFrame
+            bodyVelocity.Velocity = moveDir * flySpeed
+            RunService.RenderStepped:Wait()
+        end
+        if bodyGyro then bodyGyro:Destroy() end
+        if bodyVelocity then bodyVelocity:Destroy() end
+    end)
+end
+
+-- ==========================================
+-- AI CHAT GUI SYSTEM (อลังการ + ตัวการ์ตูน)
+-- ==========================================
+local currentLang = "TH"
+local textColor = Color3.fromRGB(0, 255, 128) -- สีเขียวเรืองแสงเริ่มต้น
+
+local translations = {
+    TH = {title = "🤖 ระบบ AI อัจฉริยะ (เอกชอบสร้างสคริป)", placeholder = "พิมพ์คำถามที่นี่...", send = "ส่งคำถาม", langChanged = "เปลี่ยนภาษาเป็น ภาษาไทย เรียบร้อย"},
+    EN = {title = "🤖 Smart AI System (AEK Script)", placeholder = "Type your question here...", send = "Send", langChanged = "Language changed to English"},
+    FR = {title = "🤖 Système IA Intelligent", placeholder = "Écrivez votre question ici...", send = "Envoyer", langChanged = "Langue changée en Français"}
+}
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "AEK_AI_Chat_GUI"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+local MainFrame = Instance.new("Frame")
+MainFrame.Size = UDim2.new(0.85, 0, 0.85, 0)
+MainFrame.Position = UDim2.new(0.075, 0, 0.075, 0)
+MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 25)
+MainFrame.BorderSizePixel = 0
+MainFrame.Visible = false
+MainFrame.Parent = ScreenGui
+
+local UICorner = Instance.new("UICorner", MainFrame)
+UICorner.CornerRadius = UDim2.new(0, 15)
+
+local UIStroke = Instance.new("UIStroke", MainFrame)
+UIStroke.Color = Color3.fromRGB(0, 255, 128)
+UIStroke.Thickness = 3
+
+-- Title
+local TitleLabel = Instance.new("TextLabel")
+TitleLabel.Size = UDim2.new(1, -60, 0, 40)
+TitleLabel.Position = UDim2.new(0, 20, 0, 10)
+TitleLabel.BackgroundTransparency = 1
+TitleLabel.Text = translations.TH.title
+TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+TitleLabel.TextSize = 22
+TitleLabel.Font = Enum.Font.Garamond
+TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+TitleLabel.Parent = MainFrame
+
+-- Close Button
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Size = UDim2.new(0, 35, 0, 35)
+CloseBtn.Position = UDim2.new(1, -45, 0, 10)
+CloseBtn.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+CloseBtn.Text = "X"
+CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+CloseBtn.TextSize = 18
+CloseBtn.Font = Enum.Font.SourceSansBold
+CloseBtn.Parent = MainFrame
+Instance.new("UICorner", CloseBtn).CornerRadius = UDim2.new(0, 8)
+CloseBtn.MouseButton1Click:Connect(function() MainFrame.Visible = false end)
+
+-- Anime Mask / Characters (รูปตัวการ์ตูน)
+local Image1 = Instance.new("ImageLabel")
+Image1.Size = UDim2.new(0, 120, 0, 120)
+Image1.Position = UDim2.new(0, 10, 0, 60)
+Image1.BackgroundTransparency = 1
+Image1.Image = "rbxassetid://6031075938"
+Image1.Parent = MainFrame
+
+local Image2 = Instance.new("ImageLabel")
+Image2.Size = UDim2.new(0, 120, 0, 120)
+Image2.Position = UDim2.new(1, -130, 0, 60)
+Image2.BackgroundTransparency = 1
+Image2.Image = "rbxassetid://6031075938"
+Image2.Parent = MainFrame
+
+-- Chat Scroll Box
+local ChatScroll = Instance.new("ScrollingFrame")
+ChatScroll.Size = UDim2.new(1, -280, 1, -190)
+ChatScroll.Position = UDim2.new(0, 140, 0, 60)
+ChatScroll.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+ChatScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+ChatScroll.ScrollBarThickness = 6
+ChatScroll.Parent = MainFrame
+Instance.new("UICorner", ChatScroll).CornerRadius = UDim2.new(0, 10)
+
+local UIListLayout = Instance.new("UIListLayout", ChatScroll)
+UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+UIListLayout.Padding = UDim.new(0, 8)
+
+UIListLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    ChatScroll.CanvasSize = UDim2.new(0, 0, 0, UIListLayout.AbsoluteContentSize.Y + 10)
+    ChatScroll.CanvasPosition = Vector2.new(0, UIListLayout.AbsoluteContentSize.Y)
+end)
+
+-- Input Box
+local InputBox = Instance.new("TextBox")
+InputBox.Size = UDim2.new(1, -410, 0, 45)
+InputBox.Position = UDim2.new(0, 140, 1, -115)
+InputBox.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
+InputBox.PlaceholderText = translations.TH.placeholder
+InputBox.Text = ""
+InputBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+InputBox.TextSize = 16
+InputBox.Font = Enum.Font.SourceSans
+InputBox.Parent = MainFrame
+Instance.new("UICorner", InputBox).CornerRadius = UDim2.new(0, 8)
+
+-- Send Button
+local SendBtn = Instance.new("TextButton")
+SendBtn.Size = UDim2.new(0, 110, 0, 45)
+SendBtn.Position = UDim2.new(1, -260, 1, -115)
+SendBtn.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
+SendBtn.Text = translations.TH.send
+SendBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+SendBtn.TextSize = 16
+SendBtn.Font = Enum.Font.SourceSansBold
+SendBtn.Parent = MainFrame
+Instance.new("UICorner", SendBtn).CornerRadius = UDim2.new(0, 8)
+
+-- Control Panel (Color & Language)
+local ControlFrame = Instance.new("Frame")
+ControlFrame.Size = UDim2.new(1, -280, 0, 50)
+ControlFrame.Position = UDim2.new(0, 140, 1, -60)
+ControlFrame.BackgroundTransparency = 1
+ControlFrame.Parent = MainFrame
+
+local function createControlBtn(text, pos, size, color, callback)
+    local btn = Instance.new("TextButton")
+    btn.Size = size
+    btn.Position = pos
+    btn.BackgroundColor3 = color
+    btn.Text = text
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btn.Font = Enum.Font.SourceSansBold
+    btn.TextSize = 14
+    btn.Parent = ControlFrame
+    Instance.new("UICorner", btn).CornerRadius = UDim2.new(0, 6)
+    btn.MouseButton1Click:Connect(callback)
+    return btn
+end
+
+-- Color Selectors
+createControlBtn("เขียว", UDim2.new(0, 0, 0, 10), UDim2.new(0, 60, 0, 30), Color3.fromRGB(0, 255, 128), function() textColor = Color3.fromRGB(0, 255, 128) UIStroke.Color = textColor end)
+createControlBtn("แดง", UDim2.new(0, 65, 0, 10), UDim2.new(0, 60, 0, 30), Color3.fromRGB(255, 50, 50), function() textColor = Color3.fromRGB(255, 50, 50) UIStroke.Color = textColor end)
+createControlBtn("ม่วง", UDim2.new(0, 130, 0, 10), UDim2.new(0, 60, 0, 30), Color3.fromRGB(180, 50, 255), function() textColor = Color3.fromRGB(180, 50, 255) UIStroke.Color = textColor end)
+createControlBtn("ฟ้า", UDim2.new(0, 195, 0, 10), UDim2.new(0, 60, 0, 30), Color3.fromRGB(0, 200, 255), function() textColor = Color3.fromRGB(0, 200, 255) UIStroke.Color = textColor end)
+createControlBtn("ขาว", UDim2.new(0, 260, 0, 10), UDim2.new(0, 60, 0, 30), Color3.fromRGB(255, 255, 255), function() textColor = Color3.fromRGB(255, 255, 255) UIStroke.Color = textColor end)
+
+-- Language Selectors
+createControlBtn("TH", UDim2.new(1, -135, 0, 10), UDim2.new(0, 40, 0, 30), Color3.fromRGB(60, 60, 80), function()
+    currentLang = "TH"
+    TitleLabel.Text = translations.TH.title
+    InputBox.PlaceholderText = translations.TH.placeholder
+    SendBtn.Text = translations.TH.send
+end)
+createControlBtn("EN", UDim2.new(1, -90, 0, 10), UDim2.new(0, 40, 0, 30), Color3.fromRGB(60, 60, 80), function()
+    currentLang = "EN"
+    TitleLabel.Text = translations.EN.title
+    InputBox.PlaceholderText = translations.EN.placeholder
+    SendBtn.Text = translations.EN.send
+end)
+createControlBtn("FR", UDim2.new(1, -45, 0, 10), UDim2.new(0, 40, 0, 30), Color3.fromRGB(60, 60, 80), function()
+    currentLang = "FR"
+    TitleLabel.Text = translations.FR.title
+    InputBox.PlaceholderText = translations.FR.placeholder
+    SendBtn.Text = translations.FR.send
+end)
+
+-- Append Message Function
+local function addMessage(sender, text, isAi)
+    local msgLabel = Instance.new("TextLabel")
+    msgLabel.Size = UDim2.new(1, -20, 0, 0)
+    msgLabel.BackgroundTransparency = 1
+    msgLabel.Text = sender .. ": " .. text
+    msgLabel.TextColor3 = isAi and textColor or Color3.fromRGB(220, 220, 220)
+    msgLabel.TextSize = 16
+    msgLabel.Font = Enum.Font.SourceSans
+    msgLabel.TextWrapped = true
+    msgLabel.TextXAlignment = Enum.TextXAlignment.Left
+    msgLabel.Parent = ChatScroll
+
+    msgLabel.Size = UDim2.new(1, -20, 0, msgLabel.TextBounds.Y + 5)
+end
+
+-- Local Offline AI Engine (ตอบทันที ไม่ย้อนถาม)
+local function getAiResponse(query)
+    local q = string.lower(query)
+    if string.find(q, "สวัสดี") or string.find(q, "hello") or string.find(q, "bonjour") then
+        return "สวัสดีครับ ผมคือ AI ประจำสคริปต์ เอกชอบสร้างสคริป ยินดีให้คำแนะนำทุกเรื่องครับ"
+    elseif string.find(q, "สคริป") or string.find(q, "script") then
+        return "สคริปต์นี้สร้างโดย เอกชอบสร้างสคริป รวบรวมฟังก์ชันสำหรับใช้งานได้ทุกแมพใน Roblox ครับ"
+    elseif string.find(q, "ทำอะไรได้บ้าง") or string.find(q, "help") then
+        return "ผมสามารถตอบคำถามทั่วไป ให้ข้อมูลเกี่ยวกับการใช้งานสคริปต์ บิน วิ่งเร็ว หรือวาร์ปได้ครับ"
+    else
+        return "รับทราบคำถาม: '" .. query .. "' ระบบกำลังประมวลผลข้อมูลและพร้อมช่วยเหลือคุณอย่างเต็มที่ครับ"
+    end
+end
+
+local function onSend()
+    local text = InputBox.Text
+    if text ~= "" then
+        addMessage("You", text, false)
+        InputBox.Text = ""
+        task.wait(0.2)
+        local reply = getAiResponse(text)
+        addMessage("AI", reply, true)
+    end
+end
+
+SendBtn.MouseButton1Click:Connect(onSend)
+InputBox.FocusLost:Connect(function(enterPressed)
+    if enterPressed then onSend() end
+end)
+
+
+-- ==========================================
+-- DISCORD LIBRARY GUI MENU
+-- ==========================================
+local DiscordLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/bloodball/-back-ups-for-libs/main/discord"))()
+
+local win = DiscordLib:Window("เอกชอบสร้างสคริป")
+
+local serv = win:Server("Preview", "")
+
+local btns = serv:Channel("Buttons")
+
+btns:Button(
+    "Kill all",
+    function()
+        DiscordLib:Notification("Notification", "Killed everyone!", "Okay!")
+    end
+)
+
+btns:Seperator()
+
+btns:Button(
+    "Get max level",
+    function()
+        DiscordLib:Notification("Notification", "Max level!", "Okay!")
+    end
+)
+
+local tgls = serv:Channel("Toggles")
+
+tgls:Toggle(
+    "Auto-Farm",
+    false,
+    function(bool)
+        print(bool)
+    end
+)
+
+local sldrs = serv:Channel("Sliders")
+
+local sldr = sldrs:Slider(
+    "Slide me!",
+    0,
+    1000,
+    400,
+    function(t)
+        print(t)
+    end
+)
+
+sldrs:Button(
+    "Change to 50",
+    function()
+        sldr:Change(50)
+    end
+)
+
+local drops = serv:Channel("Dropdowns")
+
+local drop = drops:Dropdown(
+    "Pick me!",
+    {"Option 1", "Option 2", "Option 3", "Option 4", "Option 5"},
+    function(bool)
+        print(bool)
+    end
+)
+
+drops:Button(
+    "Clear",
+    function()
+        drop:Clear()
+    end
+)
+
+drops:Button(
+    "Add option",
+    function()
+        drop:Add("Option")
+    end
+)
+
+local clrs = serv:Channel("Colorpickers")
+
+clrs:Colorpicker(
+    "ESP Color",
+    Color3.fromRGB(255, 1, 1),
+    function(t)
+        print(t)
+    end
+)
+
+local textbs = serv:Channel("Textboxes")
+
+textbs:Textbox(
+    "Gun power",
+    "Type here!",
+    true,
+    function(t)
+        print(t)
+    end
+)
+
+local lbls = serv:Channel("Labels")
+
+lbls:Label("This is just a label.")
+
+local bnds = serv:Channel("Binds")
+
+bnds:Bind(
+    "Kill bind",
+    Enum.KeyCode.RightShift,
+    function()
+        print("Killed everyone!")
+    end
+)
+
+serv:Channel("by dawid#7205")
+
+-- Main Server & Custom Features
+local mainServ = win:Server("Main", "http://www.roblox.com/asset/?id=6031075938")
+local mainChannel = mainServ:Channel("ฟังชั่นหลัก")
+
+-- ฟังก์ชันบิน
+mainChannel:Toggle("บิน (Fly)", false, function(state)
+    isFly = state
+    if isFly then
+        startFlying()
+    end
+end)
+
+-- ฟังก์ชันวิ่งเร็ว
+mainChannel:Slider("ความเร็วการวิ่ง (Speed)", 16, 500, 16, function(value)
+    speedValue = value
+    if Humanoid then
+        Humanoid.WalkSpeed = speedValue
+    end
+end)
+
+-- ฟังก์ชันวาร์ป
+mainChannel:Button("วาร์ปไปจุดที่เมาส์ชี้ (Click TP)", function()
+    local mouse = LocalPlayer:GetMouse()
+    if mouse and mouse.Hit then
+        RootPart.CFrame = mouse.Hit + Vector3.new(0, 3, 0)
+        DiscordLib:Notification("แจ้งเตือน", "วาร์ปเรียบร้อยแล้ว!", "ตกลง")
+    end
+end)
+
+-- ฟังก์ชันล่องหน
+mainChannel:Toggle("ล่องหน (Invisibility)", false, function(state)
+    if Character then
+        for _, part in ipairs(Character:GetDescendants()) do
+            if part:IsA("BasePart") or part:IsA("Decal") then
+                part.Transparency = state and 1 or 0
+            end
+        end
+    end
+end)
+
+-- ฟังก์ชันเดินทะลุ
+mainChannel:Toggle("เดินทะลุ (Noclip)", false, function(state)
+    isNoclip = state
+end)
+
+-- ปุ่มเปิดระบบ AI Chat UI
+local aiChannel = mainServ:Channel("ระบบ AI Chat")
+
+aiChannel:Button("เปิดระบบแชท AI", function()
+    MainFrame.Visible = true
+end)
